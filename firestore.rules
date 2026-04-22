@@ -1,0 +1,89 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    
+    // Admin check: Hardcoded email + DB check
+    function isAdmin() {
+      return request.auth != null && request.auth.token != null && request.auth.token.email != null && 
+             (request.auth.token.email.matches('(?i)sumisaha1616@gmail.com') || 
+              request.auth.token.email.matches('(?i)itsthep.s.0@gmail.com'));
+    }
+
+    // ===============================================================
+    // Collection: Users
+    // ===============================================================
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && (isOwner(userId) || isAdmin()); 
+      
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        isOwner(userId) || 
+        isAdmin() ||
+        // Special case: Referral code usage (allow incrementing referralCount)
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['referralCount', 'tokens']))
+      );
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /gallery/{imgId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid);
+      allow update: if isAdmin();
+    }
+
+    match /support/{msgId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && (
+        (request.resource.data.type == 'user' && request.resource.data.userId == request.auth.uid) ||
+        (request.resource.data.type == 'admin' && isAdmin())
+      );
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+
+    match /notifications/{notiId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isAdmin();
+      allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /notes/{noteId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}
